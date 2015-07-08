@@ -13,4 +13,4 @@ damage the vallox device. Power down the device before connecting/disconnecting 
 
 Tested with vallox digit se.
 
-![Settings Window](https://raw.github.com/windkh/valloxserial.net/blob/master/ValloxSerialNet.png)
+![Alt text](ValloxSerialNet.png?raw=true "Screenshot")
