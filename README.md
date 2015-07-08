@@ -12,3 +12,5 @@ Use at your own risk. Note that connecting your computer to the RS485 bus could
 damage the vallox device. Power down the device before connecting/disconnecting the bus.
 
 Tested with vallox digit se.
+
+![Settings Window](https://raw.github.com/windkh/valloxserial.net/blob/master/ValloxSerialNet.png)
