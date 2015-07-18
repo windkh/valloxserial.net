@@ -2,22 +2,47 @@
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO.Ports;
 using System.Linq;
+using System.Runtime.CompilerServices;
+using System.Security.Cryptography;
 using System.Windows.Threading;
 
 namespace ValloxSerialNet
 {
     /// <summary>
     ///     This software requires a RS485 to COM Port Hardware.
-    ///     Right now we always send on id 0x22, this will be configurable in future.
     ///     Suspend and Resume commands are not implemented!!!
     ///     91 and 8F
+    /// 
+    ///     TODO:
+    /// 
+    /// Read Variable
+    /// 
+    /// LogWindow
+    /// 
+    /// Variables
+    ///  IoPortFanSpeedRelays
+    ///     IoPortMultiPurpose1
+    ///     IoPortMultiPurpose2
+    ///     MachineInstalledC02Sensor
+    ///     LastErrorNumber
+    ///     PostHeatingOnCounter
+    ///     PostHeatingOffTime
+    ///     PostHeatingTargetValue
+    ///     Flags1
+    ///     Flags2
+    ///     Flags3
+    ///     Flags4
+    ///     Flags5
+    ///     Flags6
+    ///     FirePlaceBoosterCounter
+    ///     MaintenanceMonthCounter
     /// </summary>
     internal class ValloxModel : NotificationObject
     {
-        private const int SenderId = Vallox.Adress.Panel2; // TODO: make this configurable like the COM Port ComboBox
-
+        private byte _senderId = Vallox.Adress.Panel2; 
 
         private readonly List<Byte> _availableFanSpeeds = new List<Byte> {1, 2, 3, 4, 5, 6, 7, 8};
 
@@ -26,6 +51,8 @@ namespace ValloxSerialNet
         private readonly Queue<Byte> _interpreterQueue = new Queue<Byte>(Vallox.TelegramLength);
         private readonly Queue<Byte> _receiveQueue = new Queue<Byte>();
         private readonly SerialPort _serialPort = new SerialPort();
+        private readonly ObservableCollection<ValloxVariable> _variables = new ObservableCollection<ValloxVariable>();
+
         private int _adjustmentIntervalMinutes;
         private bool _automaticHumidityLevelSeekerState;
         private int _basicHumidityLevel;
@@ -67,14 +94,17 @@ namespace ValloxSerialNet
         private int _preHeatingSetPoint;
         private Vallox.RadiatorType _radiatorType = Vallox.RadiatorType.Electric;
         private Byte _selectedFanSpeed = 1;
+        private Byte _selectedVariable;
+
         private int _serviceReminder;
         private bool _serviceReminderIndicator;
         private Command _setFanSpeedCommand;
+        private Command _readVariableCommand;
         private int _tempExhaust;
         private int _tempIncomming;
         private int _tempInside;
         private int _tempOutside;
-
+        
 
         public ValloxModel()
         {
@@ -83,7 +113,7 @@ namespace ValloxSerialNet
 
         public void Connect()
         {
-            if (!_serialPort.IsOpen)
+            if (!IsConnected)
             {
                 _serialPort.PortName = ComPort;
                 _serialPort.BaudRate = 9600;
@@ -101,30 +131,48 @@ namespace ValloxSerialNet
                 ConnectCommand.RaiseCanExecuteChanged();
                 DisconnectCommand.RaiseCanExecuteChanged();
                 SetFanSpeedCommand.RaiseCanExecuteChanged();
+                ReadVariableCommand.RaiseCanExecuteChanged();
+                RaisePropertyChanged("IsConnected");
             }
         }
 
         public void Disconnect()
         {
-            if (_serialPort.IsOpen)
+            if (IsConnected)
             {
                 _serialPort.Close();
 
                 ConnectCommand.RaiseCanExecuteChanged();
                 DisconnectCommand.RaiseCanExecuteChanged();
                 SetFanSpeedCommand.RaiseCanExecuteChanged();
+                ReadVariableCommand.RaiseCanExecuteChanged();
             }
         }
 
         public void SetFanSpeed()
         {
-            if (_serialPort.IsOpen)
+            if (IsConnected)
             {
                 Byte fanSpeed = Vallox.ConvertBackFanSpeed(SelectedFanSpeed - 1);
-                Byte[] telegram = Vallox.CreateTelegram(SenderId, Vallox.Adress.Master, Vallox.Variable.FanSpeed,
+                Byte[] telegram = Vallox.CreateTelegram(_senderId, Vallox.Adress.Master, Vallox.Variable.FanSpeed,
                     fanSpeed);
                 _serialPort.Write(telegram, 0, telegram.Length);
             }
+        }
+
+        public void ReadVariable(Byte variable)
+        {
+            if (IsConnected)
+            {
+                Byte[] telegram = Vallox.CreateTelegram(_senderId, Vallox.Adress.Master, Vallox.PollRequest, variable);
+                _serialPort.Write(telegram, 0, telegram.Length);
+            }
+        }
+
+        public void ReadVariable()
+        {
+            Byte variable = SelectedVariable;
+            ReadVariable(variable);
         }
 
         #region Commands
@@ -135,7 +183,7 @@ namespace ValloxSerialNet
             {
                 if (_connectCommand == null)
                 {
-                    _connectCommand = new Command(Connect, () => { return (ComPort != null && !_serialPort.IsOpen); });
+                    _connectCommand = new Command(Connect, () => { return (ComPort != null && !IsConnected); });
                 }
 
                 return _connectCommand;
@@ -148,7 +196,7 @@ namespace ValloxSerialNet
             {
                 if (_disconnectCommand == null)
                 {
-                    _disconnectCommand = new Command(Disconnect, () => { return _serialPort.IsOpen; });
+                    _disconnectCommand = new Command(Disconnect, () => IsConnected);
                 }
 
                 return _disconnectCommand;
@@ -161,10 +209,31 @@ namespace ValloxSerialNet
             {
                 if (_setFanSpeedCommand == null)
                 {
-                    _setFanSpeedCommand = new Command(SetFanSpeed, () => { return _serialPort.IsOpen; });
+                    _setFanSpeedCommand = new Command(SetFanSpeed, () => IsConnected);
                 }
 
                 return _setFanSpeedCommand;
+            }
+        }
+
+        public Command ReadVariableCommand
+        {
+            get
+            {
+                if (_readVariableCommand == null)
+                {
+                    _readVariableCommand = new Command(ReadVariable, () => IsConnected);
+                }
+
+                return _readVariableCommand;
+            }
+        }
+
+        public bool IsConnected
+        {
+            get
+            {
+                return _serialPort.IsOpen;
             }
         }
 
@@ -174,9 +243,29 @@ namespace ValloxSerialNet
 
         #region Ui related properties
 
+        public byte SenderId
+        {
+            get
+            {
+                return _senderId;
+            }
+            set
+            {
+                if (value != _senderId)
+                {
+                    _senderId = value;
+                    RaisePropertyChanged(("SenderId"));
+                    ConnectCommand.RaiseCanExecuteChanged();
+                }
+            }
+        }
+
         public string ComPort
         {
-            get { return _comPort; }
+            get
+            {
+                return _comPort;
+            }
             set
             {
                 if (value != _comPort)
@@ -190,17 +279,26 @@ namespace ValloxSerialNet
 
         public string[] AvailableComPorts
         {
-            get { return SerialPort.GetPortNames(); }
+            get
+            {
+                return SerialPort.GetPortNames();
+            }
         }
 
         public List<Byte> AvailableFanSpeeds
         {
-            get { return _availableFanSpeeds; }
+            get
+            {
+                return _availableFanSpeeds;
+            }
         }
 
         public Byte SelectedFanSpeed
         {
-            get { return _selectedFanSpeed; }
+            get
+            {
+                return _selectedFanSpeed;
+            }
 
             set
             {
@@ -212,9 +310,41 @@ namespace ValloxSerialNet
             }
         }
 
+        public Byte SelectedVariable
+        {
+            get
+            {
+                return _selectedVariable;
+            }
+
+            set
+            {
+                if (value != _selectedVariable)
+                {
+                    _selectedVariable = value;
+                    RaisePropertyChanged("SelectedVariable");
+                }
+            }
+        }
+
         public ObservableCollection<Statistics> DetectedDevices
         {
-            get { return _detectedDevices; }
+            get
+            {
+                return _detectedDevices;
+            }
+        }
+
+
+        /// <summary>
+        /// Contains the latest value of the received variables.
+        /// </summary>
+        public ObservableCollection<ValloxVariable> Variables
+        {
+            get
+            {
+                return _variables;
+            }
         }
 
         #endregion
@@ -223,7 +353,10 @@ namespace ValloxSerialNet
 
         public bool PowerState
         {
-            get { return _powerState; }
+            get
+            {
+                return _powerState;
+            }
             set
             {
                 if (value != _powerState)
@@ -236,7 +369,10 @@ namespace ValloxSerialNet
 
         public bool Co2AdjustState
         {
-            get { return _co2AdjustState; }
+            get
+            {
+                return _co2AdjustState;
+            }
             set
             {
                 if (value != _co2AdjustState)
@@ -249,7 +385,10 @@ namespace ValloxSerialNet
 
         public bool HumidityAdjustState
         {
-            get { return _humidityAdjustState; }
+            get
+            {
+                return _humidityAdjustState;
+            }
             set
             {
                 if (value != _humidityAdjustState)
@@ -262,7 +401,10 @@ namespace ValloxSerialNet
 
         public bool HeatingState
         {
-            get { return _heatingState; }
+            get
+            {
+                return _heatingState;
+            }
             set
             {
                 if (value != _heatingState)
@@ -275,7 +417,10 @@ namespace ValloxSerialNet
 
         public bool FilterGuardIndicator
         {
-            get { return _filterGuardIndicator; }
+            get
+            {
+                return _filterGuardIndicator;
+            }
             set
             {
                 if (value != _filterGuardIndicator)
@@ -288,7 +433,10 @@ namespace ValloxSerialNet
 
         public bool HeatingIndicator
         {
-            get { return _heatingIndicator; }
+            get
+            {
+                return _heatingIndicator;
+            }
             set
             {
                 if (value != _heatingIndicator)
@@ -301,7 +449,10 @@ namespace ValloxSerialNet
 
         public bool FaultIndicator
         {
-            get { return _faultIndicator; }
+            get
+            {
+                return _faultIndicator;
+            }
             set
             {
                 if (value != _faultIndicator)
@@ -314,7 +465,10 @@ namespace ValloxSerialNet
 
         public bool ServiceReminderIndicator
         {
-            get { return _serviceReminderIndicator; }
+            get
+            {
+                return _serviceReminderIndicator;
+            }
             set
             {
                 if (value != _serviceReminderIndicator)
@@ -327,7 +481,10 @@ namespace ValloxSerialNet
 
         public Vallox.MaxSpeedLimitMode MaxSpeedLimitMode
         {
-            get { return _maxSpeedLimitMode; }
+            get
+            {
+                return _maxSpeedLimitMode;
+            }
             set
             {
                 if (value != _maxSpeedLimitMode)
@@ -340,7 +497,10 @@ namespace ValloxSerialNet
 
         public int AdjustmentIntervalMinutes
         {
-            get { return _adjustmentIntervalMinutes; }
+            get
+            {
+                return _adjustmentIntervalMinutes;
+            }
             set
             {
                 if (value != _adjustmentIntervalMinutes)
@@ -353,7 +513,10 @@ namespace ValloxSerialNet
 
         public bool AutomaticHumidityLevelSeekerState
         {
-            get { return _automaticHumidityLevelSeekerState; }
+            get
+            {
+                return _automaticHumidityLevelSeekerState;
+            }
             set
             {
                 if (value != _automaticHumidityLevelSeekerState)
@@ -366,7 +529,10 @@ namespace ValloxSerialNet
 
         public Vallox.BoostSwitchMode BoostSwitchMode
         {
-            get { return _boostSwitchMode; }
+            get
+            {
+                return _boostSwitchMode;
+            }
             set
             {
                 if (value != _boostSwitchMode)
@@ -379,7 +545,10 @@ namespace ValloxSerialNet
 
         public Vallox.RadiatorType RadiatorType
         {
-            get { return _radiatorType; }
+            get
+            {
+                return _radiatorType;
+            }
             set
             {
                 if (value != _radiatorType)
@@ -392,7 +561,10 @@ namespace ValloxSerialNet
 
         public bool CascadeAdjust
         {
-            get { return _cascadeAdjust; }
+            get
+            {
+                return _cascadeAdjust;
+            }
             set
             {
                 if (value != _cascadeAdjust)
@@ -405,7 +577,10 @@ namespace ValloxSerialNet
 
         public int FanSpeed
         {
-            get { return _fanSpeed; }
+            get
+            {
+                return _fanSpeed;
+            }
             set
             {
                 if (value != _fanSpeed)
@@ -418,7 +593,10 @@ namespace ValloxSerialNet
 
         public int FanSpeedMax
         {
-            get { return _fanSpeedMax; }
+            get
+            {
+                return _fanSpeedMax;
+            }
             set
             {
                 if (value != _fanSpeedMax)
@@ -431,7 +609,10 @@ namespace ValloxSerialNet
 
         public int FanSpeedMin
         {
-            get { return _fanSpeedMin; }
+            get
+            {
+                return _fanSpeedMin;
+            }
             set
             {
                 if (value != _fanSpeedMin)
@@ -444,7 +625,10 @@ namespace ValloxSerialNet
 
         public int TempInside
         {
-            get { return _tempInside; }
+            get
+            {
+                return _tempInside;
+            }
             set
             {
                 if (value != _tempInside)
@@ -457,7 +641,10 @@ namespace ValloxSerialNet
 
         public int TempOutside
         {
-            get { return _tempOutside; }
+            get
+            {
+                return _tempOutside;
+            }
             set
             {
                 if (value != _tempOutside)
@@ -470,7 +657,10 @@ namespace ValloxSerialNet
 
         public int TempExhaust
         {
-            get { return _tempExhaust; }
+            get
+            {
+                return _tempExhaust;
+            }
             set
             {
                 if (value != _tempExhaust)
@@ -483,7 +673,10 @@ namespace ValloxSerialNet
 
         public int TempIncomming
         {
-            get { return _tempIncomming; }
+            get
+            {
+                return _tempIncomming;
+            }
             set
             {
                 if (value != _tempIncomming)
@@ -496,7 +689,10 @@ namespace ValloxSerialNet
 
         public int HrcBypassThreshold
         {
-            get { return _hrcBypassThreshold; }
+            get
+            {
+                return _hrcBypassThreshold;
+            }
             set
             {
                 if (value != _hrcBypassThreshold)
@@ -509,7 +705,10 @@ namespace ValloxSerialNet
 
         public int DcFanInputAdjustment
         {
-            get { return _dcFanInputAdjustment; }
+            get
+            {
+                return _dcFanInputAdjustment;
+            }
             set
             {
                 if (value != _dcFanInputAdjustment)
@@ -522,7 +721,10 @@ namespace ValloxSerialNet
 
         public int DcFanOutputAdjustment
         {
-            get { return _dcFanOutputAdjustment; }
+            get
+            {
+                return _dcFanOutputAdjustment;
+            }
             set
             {
                 if (value != _dcFanOutputAdjustment)
@@ -535,7 +737,10 @@ namespace ValloxSerialNet
 
         public int CellDefrostingThreshold
         {
-            get { return _cellDefrostingThreshold; }
+            get
+            {
+                return _cellDefrostingThreshold;
+            }
             set
             {
                 if (value != _cellDefrostingThreshold)
@@ -548,7 +753,10 @@ namespace ValloxSerialNet
 
         public int BasicHumidityLevel
         {
-            get { return _basicHumidityLevel; }
+            get
+            {
+                return _basicHumidityLevel;
+            }
             set
             {
                 if (value != _basicHumidityLevel)
@@ -561,7 +769,10 @@ namespace ValloxSerialNet
 
         public int Humidity
         {
-            get { return _humidity; }
+            get
+            {
+                return _humidity;
+            }
             set
             {
                 if (value != _humidity)
@@ -574,7 +785,10 @@ namespace ValloxSerialNet
 
         public int Co2High
         {
-            get { return _co2High; }
+            get
+            {
+                return _co2High;
+            }
             set
             {
                 if (value != _co2High)
@@ -587,7 +801,10 @@ namespace ValloxSerialNet
 
         public int Co2Low
         {
-            get { return _co2Low; }
+            get
+            {
+                return _co2Low;
+            }
             set
             {
                 if (value != _co2Low)
@@ -600,7 +817,10 @@ namespace ValloxSerialNet
 
         public int Co2SetPointUpper
         {
-            get { return _co2SetPointUpper; }
+            get
+            {
+                return _co2SetPointUpper;
+            }
             set
             {
                 if (value != _co2SetPointUpper)
@@ -613,7 +833,10 @@ namespace ValloxSerialNet
 
         public int Co2SetPointLower
         {
-            get { return _co2SetPointLower; }
+            get
+            {
+                return _co2SetPointLower;
+            }
             set
             {
                 if (value != _co2SetPointLower)
@@ -626,7 +849,10 @@ namespace ValloxSerialNet
 
         public int HumiditySensor1
         {
-            get { return _humiditySensor1; }
+            get
+            {
+                return _humiditySensor1;
+            }
             set
             {
                 if (value != _humiditySensor1)
@@ -639,7 +865,10 @@ namespace ValloxSerialNet
 
         public int HumiditySensor2
         {
-            get { return _humiditySensor2; }
+            get
+            {
+                return _humiditySensor2;
+            }
             set
             {
                 if (value != _humiditySensor2)
@@ -652,7 +881,10 @@ namespace ValloxSerialNet
 
         public int HeatingSetPoint
         {
-            get { return _heatingSetPoint; }
+            get
+            {
+                return _heatingSetPoint;
+            }
             set
             {
                 if (value != _heatingSetPoint)
@@ -665,7 +897,10 @@ namespace ValloxSerialNet
 
         public int PreHeatingSetPoint
         {
-            get { return _preHeatingSetPoint; }
+            get
+            {
+                return _preHeatingSetPoint;
+            }
             set
             {
                 if (value != _preHeatingSetPoint)
@@ -678,7 +913,10 @@ namespace ValloxSerialNet
 
         public int InputFanStopThreshold
         {
-            get { return _inputFanStopThreshold; }
+            get
+            {
+                return _inputFanStopThreshold;
+            }
             set
             {
                 if (value != _inputFanStopThreshold)
@@ -691,7 +929,10 @@ namespace ValloxSerialNet
 
         public int ServiceReminder
         {
-            get { return _serviceReminder; }
+            get
+            {
+                return _serviceReminder;
+            }
             set
             {
                 if (value != _serviceReminder)
@@ -811,11 +1052,15 @@ namespace ValloxSerialNet
             string receiverString = Vallox.ConvertAddress(receiver);
             UpdateStatistics(receiverString, false, true);
 
-               
-            if (receiver == Vallox.Adress.Panel1 || receiver == Vallox.Adress.Panel8 || receiver == SenderId ||
+
+            if (receiver == Vallox.Adress.Panel1 || receiver == Vallox.Adress.Panel8 || receiver == _senderId ||
                 receiver == Vallox.Adress.Panels) // TODO: right now 0x20 0x21 0x22 are received
             {
                 Byte variable = command;
+
+                ValloxVariable variableItem = GetVariableItem(variable);
+                variableItem.Value = value;
+
                 switch (variable)
                 {
                     case Vallox.Variable.FanSpeed:
@@ -961,7 +1206,8 @@ namespace ValloxSerialNet
                         Vallox.BoostSwitchMode boostSwitchMode;
                         Vallox.RadiatorType radiatorType;
                         bool cascadeAdjust;
-                        Vallox.ConvertProgram(value, out adjustmentIntervalMinutes, out automaticHumidityLevelSeekerState,
+                        Vallox.ConvertProgram(value, out adjustmentIntervalMinutes,
+                            out automaticHumidityLevelSeekerState,
                             out boostSwitchMode, out radiatorType, out cascadeAdjust);
 
                         AdjustmentIntervalMinutes = adjustmentIntervalMinutes;
@@ -1023,16 +1269,91 @@ namespace ValloxSerialNet
                         MaxSpeedLimitMode = maxSpeedLimitMode;
                         break;
                     }
-                    case Vallox.Variable.Unknown1:
+                    case Vallox.Variable.Unknown:
                     {
-                        WriteLine("Ping at {0} {1}", DateTime.Now.ToShortTimeString(), value);
+                        WriteLine("Unkown at {0} {1}", DateTime.Now.ToShortTimeString(), value);
                         break;
                     }
-                        //case Vallox.Variable.Unknown2:
-                        //{
-                    //    WriteLine("Unknown at {0} {1}", DateTime.Now.ToShortTimeString(), value);
-                        //    break;
-                        //}
+                    case Vallox.Variable.Flags1:
+                    {
+                        WriteLine("Flags1 {0}", value);
+                        break;
+                    }
+                    case Vallox.Variable.Flags2:
+                    {
+                        WriteLine("Flags2 {0}", value);
+                        break;
+                    }
+                    case Vallox.Variable.Flags3:
+                    {
+                        WriteLine("Flags3 {0}", value);
+                        break;
+                    }
+                    case Vallox.Variable.Flags4:
+                    {
+                        WriteLine("Flags4 {0}", value);
+                        break;
+                    }
+                    case Vallox.Variable.Flags5:
+                    {
+                        WriteLine("Flags5 {0}", value);
+                        break;
+                    }
+                    case Vallox.Variable.Flags6:
+                    {
+                        WriteLine("Flags6 {0}", value);
+                        break;
+                    }
+                    case Vallox.Variable.IoPortFanSpeedRelays:
+                    {
+                        WriteLine("IoPortFanSpeedRelays {0}", value);
+                        break;
+                    }
+                    case Vallox.Variable.IoPortMultiPurpose1:
+                    {
+                        WriteLine("IoPortMultiPurpose1 {0}", value);
+                        break;
+                    }
+                    case Vallox.Variable.IoPortMultiPurpose2:
+                    {
+                        WriteLine("IoPortMultiPurpose2 {0}", value);
+                        break;
+                    }
+                    case Vallox.Variable.MachineInstalledC02Sensor:
+                    {
+                        WriteLine("MachineInstalledC02Sensor {0}", value);
+                        break;
+                    }
+                    case Vallox.Variable.PostHeatingOnCounter:
+                    {
+                        WriteLine("PostHeatingOnCounter {0}", value);
+                        break;
+                    }
+                    case Vallox.Variable.PostHeatingOffTime:
+                    {
+                        WriteLine("PostHeatingOffTime {0}", value);
+                        break;
+                    }
+                    case Vallox.Variable.PostHeatingTargetValue:
+                    {
+                        WriteLine("PostHeatingTargetValue {0}", value);
+                        break;
+                    }
+                    case Vallox.Variable.FirePlaceBoosterCounter:
+                    {
+                        WriteLine("FirePlaceBoosterCounter {0}", value);
+                        break;
+                    }
+                    case Vallox.Variable.LastErrorNumber:
+                    {
+                        WriteLine("LastErrorNumber {0}", value);
+                        break;
+                    }
+                    case Vallox.Variable.MaintenanceMonthCounter:
+                    {
+                        WriteLine("MaintenanceMonthCounter {0}", value);
+                        break;
+                    }
                     case Vallox.Variable.SuspendBus:
                     {
                         WriteLine("Suspend bus for C02 sensor cummunication at {0} {1}",
@@ -1065,6 +1386,40 @@ namespace ValloxSerialNet
                     WriteLine("{0:X02} --> {1:X02}: set {2} = 0x{3:X02}", senderString, receiverString, variable, value);
                 }
             }
+        }
+
+        private ValloxVariable GetVariableItem(byte variable)
+        {
+            ValloxVariable foundVariable = null;
+            foreach (ValloxVariable valloxVariable in _variables)
+            {
+                if (valloxVariable.Id == variable)
+                {
+                    foundVariable = valloxVariable;
+                    break;
+                }
+            }
+
+            if (foundVariable == null)
+            {
+                string description = GetVariableDescription(variable);
+                foundVariable = new ValloxVariable(variable, description);
+                _variables.Add(foundVariable);
+            }
+
+            return foundVariable;
+        }
+
+        private string GetVariableDescription(byte variable)
+        {
+            string description;
+
+            if (!Vallox.VariableNames.TryGetValue(variable, out description))
+            {
+                description = "unknown";
+            }
+
+            return description;
         }
 
         private void UpdateStatistics(string name, bool tx, bool rx)
@@ -1106,6 +1461,43 @@ namespace ValloxSerialNet
         {
             string msg = string.Format(format, args);
             Debug.Write(msg);
+        }
+
+        #endregion
+
+        #region ValloxVariable
+        /// <summary>
+        /// Contains one single variable.
+        /// </summary>
+        internal class ValloxVariable : NotificationObject
+        {
+            private byte _value;
+
+            public ValloxVariable(byte id, string description)
+            {
+                Id = id;
+                Description = description;
+            }
+
+            public string Description { get; private set; }
+            public byte Id { get; private set; }
+
+            public byte Value
+            {
+                get
+                {
+                    return _value;
+                }
+
+                set
+                {
+                    if (value != _value)
+                    {
+                        _value = value;
+                        RaisePropertyChanged("Value");
+                    }
+                }
+            }
         }
 
         #endregion

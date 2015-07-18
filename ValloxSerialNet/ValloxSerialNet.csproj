@@ -53,7 +53,9 @@
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>
     </ApplicationDefinition>
+    <Compile Include="BinConverter.cs" />
     <Compile Include="Command.cs" />
+    <Compile Include="HexConverter.cs" />
     <Compile Include="NotificationObject.cs" />
     <Compile Include="Statistics.cs" />
     <Compile Include="Vallox.cs" />

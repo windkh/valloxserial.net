@@ -1,4 +1,8 @@
 ﻿using System;
+using System.Collections;
+using System.Collections.Generic;
+using System.Windows.Markup.Localizer;
+
 namespace ValloxSerialNet
 {
     /// <summary>
@@ -32,6 +36,73 @@ namespace ValloxSerialNet
         public const int TelegramLength = 6; // always 6
         public const int Domain = 1; // always 1
 
+        /// <summary>
+        /// variable 0 is reserved for polling.
+        /// </summary>
+        public const byte PollRequest = 0x00;
+
+
+        /// <summary>
+        /// contains all information about a variable.
+        /// </summary>
+        public static Dictionary<byte, string> VariableNames = new Dictionary<byte, string>()
+        {
+            {0x06, "IoPort FanSpeed-Relays"},
+            {0x07, "IoPort MultiPurpose 1"},
+            {0x08, "IoPort MultiPurpose 2"},
+
+            {0x29, "Fan Speed"},
+            {0x2A, "Humidity"},
+            {0x2B, "CO2 high"},
+            {0x2C, "CO2 low"},
+            {0x2D, "Machine Installed C02Sensors"},
+            {0x2E, "Current/Voltage in mA incomming on machine"},
+
+            {0x2F, "Humidity sensor 1 raw: (x-51)/2.04"},
+            {0x30, "Humidity sensor 2 raw: (x-51)/2.04"},
+
+            {0x32, "Temperature outside raw"},
+            {0x33, "Temperature exhaust raw"},
+            {0x34, "Temperature inside raw"},
+            {0x35, "Temperature incomming raw"},
+            {0x36, "Last error number"},
+
+            {0x55, "Post heating on counter"},
+            {0x56, "Post heating off time"},
+            {0x57, "Post heating target value"},
+
+            {0x6C, "Flags 1"},
+            {0x6D, "Flags 2"},
+            {0x6E, "Flags 3"},
+            {0x6F, "Flags 4"},
+            {0x70, "Flags 5"},
+            {0x71, "Flags 6"},
+
+            {0x79, "Fireplace booster count down minutes"},
+           
+            {0x8F, "Resume bus"},
+            {0x91, "Suspend bus for CO2 communication"},
+           
+            {0xA3, "Select"},
+            {0xA4, "Heating set point"},
+            {0xA5, "Fan Speed max"},
+            {0xA6, "Service reminder months"},
+            {0xA7, "Preheating set point"},
+            {0xA8, "Input fan stop temperature threshold"},
+            {0xA9, "Fan Speed min"},
+            {0xAA, "Program"},
+            {0xAB, "Maintencance countdown months"},
+           
+            {0xAE, "Basic humidity level"},
+            {0xAF, "Heat recovery cell bypass setpoint temperature"},
+            {0xB0, "DC fan input adjustment %"},
+            {0xB1, "DC fan output adjustment %"},
+            {0xB2, "Cell defrosting setpoint temperature"},
+            {0xB3, "CO2 set point upper"},
+            {0xB4, "CO2 set point lower"},
+            {0xB5, "Program 2"},
+        };
+
         public class Adress
         {
             public const int Mainboards = 0x10;
@@ -54,13 +125,73 @@ namespace ValloxSerialNet
 
         public class Variable
         {
+            // 1 1 1 1 1 1 1 1  
+            // | | | | | | | |
+            // | | | | | | | +- 0 Speed 1 - 0=0ff 1=on - readonly
+            // | | | | | | +--- 1 Speed 2 - 0=0ff 1=on - readonly
+            // | | | | | +----- 2 Speed 3 - 0=0ff 1=on - readonly
+            // | | | | +------- 3 Speed 4 - 0=0ff 1=on - readonly
+            // | | | +--------- 4 Speed 5 - 0=0ff 1=on - readonly
+            // | | +----------- 5 Speed 6 - 0=0ff 1=on - readonly
+            // | +------------- 6 Speed 7 - 0=0ff 1=on - readonly
+            // +--------------- 7 Speed 8 - 0=0ff 1=on - readonly
+            public const int IoPortFanSpeedRelays = 0x06;
+
+            // 1 1 1 1 1 1 1 1 
+            // | | | | | | | |
+            // | | | | | | | +- 0 
+            // | | | | | | +--- 1 
+            // | | | | | +----- 2 
+            // | | | | +------- 3 
+            // | | | +--------- 4 
+            // | | +----------- 5  post-heating on - 0=0ff 1=on - readonly
+            // | +------------- 6 
+            // +--------------- 7 
+            public const int IoPortMultiPurpose1 = 0x07;
+
+            // 1 1 1 1 1 1 1 1  0=0ff 1=on
+            // | | | | | | | |
+            // | | | | | | | +- 0 
+            // | | | | | | +--- 1 damper motor position - 0=winter 1=season - readonly
+            // | | | | | +----- 2 fault signal relay - 0=open 1=closed - readonly
+            // | | | | +------- 3 supply fan - 0=on 1=off
+            // | | | +--------- 4 pre-heating - 0=off 1=on - readonly
+            // | | +----------- 5 exhaust-fan - 0=on 1=off
+            // | +------------- 6 fireplace-booster - 0=open 1=closed - readonly 
+            // +--------------- 7 
+            public const int IoPortMultiPurpose2 = 0x08;
+
+            // see FanSpeedMapping
+            //01H = speed 1
+            //03H = speed 2
+            //07H = speed 3
+            //0FH = speed 4
+            //1FH = speed 5
+            //3FH = speed 6
+            //7FH = speed 7
+            //FFH = speed 8
             public const int FanSpeed = 0x29;
 
             // Variables 
+            // 33H = 0% FFH = 100%
             public const int Humidity = 0x2A; // higher measured relative humidity from 2F and 30. Translating Formula (x-51)/2.04
             public const int Co2High = 0x2B;
             public const int Co2Low = 0x2C;
 
+            // 1 1 1 1 1 1 1 1 
+            // | | | | | | | |
+            // | | | | | | | +- 0 
+            // | | | | | | +--- 1 Sensor1 - 0=not installed 1=installed - readonly
+            // | | | | | +----- 2 Sensor2 - 0=not installed 1=installed - readonly
+            // | | | | +------- 3 Sensor3 - 0=not installed 1=installed - readonly
+            // | | | +--------- 4 Sensor4 - 0=not installed 1=installed - readonly
+            // | | +----------- 5 Sensor5 - 0=not installed 1=installed - readonly
+            // | +------------- 6 
+            // +--------------- 7 
+            public const int MachineInstalledC02Sensor = 0x2D;
+
+            public const int CurrentIncomming = 0x2E; // Current/Voltage in mA incomming on machine - readonly
+            
             public const int HumiditySensor1 = 0x2F; // sensor value: (x-51)/2.04
             public const int HumiditySensor2 = 0x30; // sensor value: (x-51)/2.04
 
@@ -70,8 +201,97 @@ namespace ValloxSerialNet
             public const int TempIncomming = 0x35;
 
 
-            // This variable is cyclically polled from the panel but not described in the protocol: ping every minute?
-            public const int Unknown1 = 0x71;
+            //05H = Supply air temperature sensor fault
+            //06H = Carbon dioxide alarm
+            //07h = Outdoor air sensor fault
+            //08H = Extract air sensor fault
+            //09h = Water radiator danger of freezing
+            //0AH = Exhaust air sensor fault
+            public const int LastErrorNumber = 0x36;
+
+            //Post-heating power-on seconds counter. Percentage of X / 2.5
+            public const int PostHeatingOnCounter = 0x55;
+           
+            //Post-heating off time, in seconds, the counter. Percentage of X / 2.5
+            public const int PostHeatingOffTime = 0x56;
+
+            //The ventilation zone of air blown to the desired temperature NTC sensor scale
+            public const int PostHeatingTargetValue = 0x57;
+
+            // 1 1 1 1 1 1 1 1 
+            // | | | | | | | |
+            // | | | | | | | +- 0 
+            // | | | | | | +--- 1 
+            // | | | | | +----- 2 
+            // | | | | +------- 3 
+            // | | | +--------- 4 
+            // | | +----------- 5 
+            // | +------------- 6 
+            // +--------------- 7 
+            public const int Flags1 = 0x6C;
+
+            // 1 1 1 1 1 1 1 1 
+            // | | | | | | | |
+            // | | | | | | | +- 0 CO2 higher speed-request 0=no 1=Speed​​. up
+            // | | | | | | +--- 1 CO2 lower rate public invitation 0=no 1=Speed​​. down
+            // | | | | | +----- 2 %RH lower rate public invitation 0=no 1=Speed​​. down
+            // | | | | +------- 3 switch low. Spd.-request 0=no 1=Speed ​. down
+            // | | | +--------- 4 
+            // | | +----------- 5 
+            // | +------------- 6 CO2 alarm 0=no 1=CO2 alarm
+            // +--------------- 7 sensor Frost alarm 0=no 1=a risk of freezing
+            public const int Flags2 = 0x6D;
+
+            // 1 1 1 1 1 1 1 1 
+            // | | | | | | | |
+            // | | | | | | | +- 0 
+            // | | | | | | +--- 1 
+            // | | | | | +----- 2 
+            // | | | | +------- 3 
+            // | | | +--------- 4 
+            // | | +----------- 5 
+            // | +------------- 6 
+            // +--------------- 7 
+            public const int Flags3 = 0x6E;
+
+            // 1 1 1 1 1 1 1 1 
+            // | | | | | | | |
+            // | | | | | | | +- 0 
+            // | | | | | | +--- 1 
+            // | | | | | +----- 2 
+            // | | | | +------- 3 
+            // | | | +--------- 4 water radiator danger of freezing 0=no risk 1 = risk
+            // | | +----------- 5 
+            // | +------------- 6 
+            // +--------------- 7 slave/master selection 0=slave 1=master
+            public const int Flags4 = 0x6F;
+
+            // 1 1 1 1 1 1 1 1 
+            // | | | | | | | |
+            // | | | | | | | +- 0 
+            // | | | | | | +--- 1 
+            // | | | | | +----- 2 
+            // | | | | +------- 3 
+            // | | | +--------- 4 
+            // | | +----------- 5 
+            // | +------------- 6 
+            // +--------------- 7 preheating status flag 0=on 1=off
+            public const int Flags5 = 0x70;
+
+            // 1 1 1 1 1 1 1 1 
+            // | | | | | | | |
+            // | | | | | | | +- 0 
+            // | | | | | | +--- 1 
+            // | | | | | +----- 2 
+            // | | | | +------- 3 
+            // | | | +--------- 4 remote monitoring control 0=no 1=Operation - readonly
+            // | | +----------- 5 Activation of the fireplace switch read the variable and set this number one
+            // | +------------- 6 fireplace/booster status 0=off 1=on - read only
+            // +--------------- 7
+            public const int Flags6 = 0x71;
+
+            //Function time in minutes remaining , descending - readonly
+            public const int FirePlaceBoosterCounter = 0x79;
 
             // Suspend Resume Traffic for CO2 sensor interaction: is sent twice as broadcast
             public const int SuspendBus = 0x91;
@@ -83,18 +303,37 @@ namespace ValloxSerialNet
             // | | | | | | +--- 1 CO2 Adjust state
             // | | | | | +----- 2 %RH adjust state
             // | | | | +------- 3 Heating state
-            // | | | +--------- 4 Filterguard indicator
-            // | | +----------- 5 Heating indicator
-            // | +------------- 6 Fault indicator
-            // +--------------- 7 service reminder
+            // | | | +--------- 4 Filterguard indicator - readonly
+            // | | +----------- 5 Heating indicator - readonly
+            // | +------------- 6 Fault indicator - readonly
+            // +--------------- 7 Service reminder - readonly
             public const int Select = 0xA3;
+
             public const int HeatingSetPoint = 0xA4;
+
+            //01H = Speed 1
+            //03H = Speed 2
+            //07H = Speed 3
+            //0FH = Speed 4
+            //1FH = Speed 5
+            //3FH = Speed 6
+            //7FH = Speed 7
+            //FFH = Speed 8
             public const int FanSpeedMax = 0xA5;
-            public const int ServiceReminder = 0xA6;
+
+            public const int ServiceReminder = 0xA6; // months
             public const int PreHeatingSetPoint = 0xA7;
 
             public const int InputFanStop = 0xA8;  // Temp threshold: fan stops if input temp falls below this temp.
 
+            //01H = Speed 1
+            //03H = Speed 2
+            //07H = Speed 3
+            //0FH = Speed 4
+            //1FH = Speed 5
+            //3FH = Speed 6
+            //7FH = Speed 7
+            //FFH = Speed 8
             public const int FanSpeedMin = 0xA9;
 
             // 1 1 1 1 1 1 1 1
@@ -109,6 +348,9 @@ namespace ValloxSerialNet
             // | +------------- 6 radiator type 0 = electric, 1 = water
             // +--------------- 7 cascade adjust 0 = off, 1 = on
             public const int Program = 0xAA;
+
+            //The maintenance counter month Inform the next maintenance alarm time remaining months. Descending.
+            public const int MaintenanceMonthCounter = 0xAB;
 
             public const int BasicHumidityLevel = 0xAE;
             public const int HrcBypass = 0xAF; // Heat recovery cell bypass setpoint temp
@@ -134,7 +376,7 @@ namespace ValloxSerialNet
             public const int Program2 = 0xB5;
 
             // This one is queried at startup and answered with 3 but not described in the protocol: version?
-            public const int Unknown2 = 0xC0;
+            public const int Unknown = 0xC0;
         }
 
        
@@ -491,14 +733,89 @@ namespace ValloxSerialNet
                         variable = "Program2";
                         break;
                     }
-                case Variable.Unknown1:
+                case Variable.Flags1:
                     {
-                        variable = "Ping";
+                        variable = "Flags1";
                         break;
                     }
-                case Variable.Unknown2:
+                case Variable.Flags2:
                     {
-                        variable = "Unknown2";
+                        variable = "Flags2";
+                        break;
+                    }
+                case Variable.Flags3:
+                    {
+                        variable = "Flags3";
+                        break;
+                    }
+                case Variable.Flags4:
+                    {
+                        variable = "Flags4";
+                        break;
+                    }
+                case Variable.Flags5:
+                    {
+                        variable = "Flags5";
+                        break;
+                    }
+                case Variable.Flags6:
+                    {
+                        variable = "Flags6";
+                        break;
+                    }
+                case Variable.IoPortFanSpeedRelays:
+                    {
+                        variable = "IoPortFanSpeedRelays";
+                        break;
+                    }
+                case Variable.IoPortMultiPurpose1:
+                    {
+                        variable = "IoPortMultiPurpose1";
+                        break;
+                    }
+                case Variable.IoPortMultiPurpose2:
+                    {
+                        variable = "IoPortMultiPurpose2";
+                        break;
+                    }
+                case Variable.MachineInstalledC02Sensor:
+                    {
+                        variable = "MachineInstalledC02Sensor";
+                        break;
+                    }
+                case Variable.PostHeatingOnCounter:
+                    {
+                        variable = "PostHeatingOnCounter";
+                        break;
+                    }
+                case Variable.PostHeatingOffTime:
+                    {
+                        variable = "PostHeatingOffTime";
+                        break;
+                    }
+                case Variable.PostHeatingTargetValue:
+                    {
+                        variable = "PostHeatingTargetValue";
+                        break;
+                    }
+                case Variable.FirePlaceBoosterCounter:
+                    {
+                        variable = "FirePlaceBoosterCounter";
+                        break;
+                    }
+                case Variable.MaintenanceMonthCounter:
+                    {
+                        variable = "MaintenanceMonthCounter";
+                        break;
+                    }
+                case Variable.LastErrorNumber:
+                    {
+                        variable = "LastErrorNumber";
+                        break;
+                    }
+                case Variable.Unknown:
+                    {
+                        variable = "Unknown";
                         break;
                     }
             }
