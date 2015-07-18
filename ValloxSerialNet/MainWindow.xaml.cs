@@ -25,7 +25,7 @@ namespace ValloxSerialNet
                 SortListView(VariablesListView, "Id", ListSortDirection.Ascending);
                 SortListView(DevicesListView, "Address", ListSortDirection.Ascending);
 
-                //StartPolling();
+                StartPolling();
             }; 
         }
 
@@ -41,7 +41,7 @@ namespace ValloxSerialNet
                 variable++;
                 if (variable > 255)
                 {
-                    timer.Stop();
+                    //timer.Stop();
                 }
             };
 
