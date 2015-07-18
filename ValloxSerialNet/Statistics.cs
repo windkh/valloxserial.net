@@ -12,14 +12,21 @@ namespace ValloxSerialNet
         private int _txCount = 0;
 
 
-        public Statistics(string name)
+        public Statistics(string name, byte id)
         {
             Name = name;
+            Id = id;
         }
 
         public string Name
         {
             get; 
+            private set;
+        }
+
+        public byte Id
+        {
+            get;
             private set;
         }
 

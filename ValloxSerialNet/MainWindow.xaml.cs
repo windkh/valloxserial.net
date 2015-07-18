@@ -25,7 +25,7 @@ namespace ValloxSerialNet
                 SortListView(VariablesListView, "Id", ListSortDirection.Ascending);
                 SortListView(DevicesListView, "Address", ListSortDirection.Ascending);
 
-                StartPolling();
+                //StartPolling();
             }; 
         }
 

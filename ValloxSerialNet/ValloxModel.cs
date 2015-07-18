@@ -1047,10 +1047,10 @@ namespace ValloxSerialNet
         private void Interpret(Byte domain, Byte sender, Byte receiver, Byte command, Byte value)
         {
             string senderString = Vallox.ConvertAddress(sender);
-            UpdateStatistics(senderString, true, false);
+            UpdateStatistics(senderString, sender, true, false);
 
             string receiverString = Vallox.ConvertAddress(receiver);
-            UpdateStatistics(receiverString, false, true);
+            UpdateStatistics(receiverString, receiver, false, true);
 
 
             if (receiver == Vallox.Adress.Panel1 || receiver == Vallox.Adress.Panel8 || receiver == _senderId ||
@@ -1422,7 +1422,7 @@ namespace ValloxSerialNet
             return description;
         }
 
-        private void UpdateStatistics(string name, bool tx, bool rx)
+        private void UpdateStatistics(string name, byte id, bool tx, bool rx)
         {
             Statistics nameStat = null;
 
@@ -1437,7 +1437,7 @@ namespace ValloxSerialNet
 
             if (nameStat == null)
             {
-                nameStat = new Statistics(name);
+                nameStat = new Statistics(name, id);
                 DetectedDevices.Add(nameStat);
             }
 
@@ -1471,7 +1471,8 @@ namespace ValloxSerialNet
         /// </summary>
         internal class ValloxVariable : NotificationObject
         {
-            private byte _value;
+            private byte _value = 0;
+            private int _counter = 1;
 
             public ValloxVariable(byte id, string description)
             {
@@ -1494,7 +1495,30 @@ namespace ValloxSerialNet
                     if (value != _value)
                     {
                         _value = value;
+                        OnValueChanged();
                         RaisePropertyChanged("Value");
+                    }
+                }
+            }
+
+            private void OnValueChanged()
+            {
+                Counter++;
+            }
+
+            public int Counter
+            {
+                get
+                {
+                    return _counter;
+                }
+
+                set
+                {
+                    if (value != _counter)
+                    {
+                        _counter = value;
+                        RaisePropertyChanged("Counter");
                     }
                 }
             }
