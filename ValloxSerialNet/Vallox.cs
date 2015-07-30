@@ -149,7 +149,7 @@ namespace ValloxSerialNet
             // +--------------- 7 
             public const int IoPortMultiPurpose1 = 0x07;
 
-            // 1 1 1 1 1 1 1 1  0=0ff 1=on
+            // 1 1 1 1 1 1 1 1  
             // | | | | | | | |
             // | | | | | | | +- 0 
             // | | | | | | +--- 1 damper motor position - 0=winter 1=season - readonly

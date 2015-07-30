@@ -60,6 +60,7 @@
     <Compile Include="Statistics.cs" />
     <Compile Include="Vallox.cs" />
     <Compile Include="ValloxModel.cs" />
+    <Compile Include="ValloxVariable.cs" />
     <Page Include="MainWindow.xaml">
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>

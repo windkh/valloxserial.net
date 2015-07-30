@@ -2,11 +2,8 @@
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
-using System.Globalization;
 using System.IO.Ports;
 using System.Linq;
-using System.Runtime.CompilerServices;
-using System.Security.Cryptography;
 using System.Windows.Threading;
 
 namespace ValloxSerialNet
@@ -95,11 +92,13 @@ namespace ValloxSerialNet
         private Vallox.RadiatorType _radiatorType = Vallox.RadiatorType.Electric;
         private Byte _selectedFanSpeed = 1;
         private Byte _selectedVariable;
+        private Byte _selectedValue;
 
         private int _serviceReminder;
         private bool _serviceReminderIndicator;
         private Command _setFanSpeedCommand;
         private Command _readVariableCommand;
+        private Command _writeVariableCommand;
         private int _tempExhaust;
         private int _tempIncomming;
         private int _tempInside;
@@ -111,7 +110,7 @@ namespace ValloxSerialNet
             _dispatcher = Dispatcher.CurrentDispatcher;
         }
 
-        public void Connect()
+        public void ExecuteConnect()
         {
             if (!IsConnected)
             {
@@ -132,11 +131,13 @@ namespace ValloxSerialNet
                 DisconnectCommand.RaiseCanExecuteChanged();
                 SetFanSpeedCommand.RaiseCanExecuteChanged();
                 ReadVariableCommand.RaiseCanExecuteChanged();
+                WriteVariableCommand.RaiseCanExecuteChanged();
+
                 RaisePropertyChanged("IsConnected");
             }
         }
 
-        public void Disconnect()
+        public void ExecuteDisconnect()
         {
             if (IsConnected)
             {
@@ -146,10 +147,11 @@ namespace ValloxSerialNet
                 DisconnectCommand.RaiseCanExecuteChanged();
                 SetFanSpeedCommand.RaiseCanExecuteChanged();
                 ReadVariableCommand.RaiseCanExecuteChanged();
+                WriteVariableCommand.RaiseCanExecuteChanged();
             }
         }
 
-        public void SetFanSpeed()
+        public void ExecuteSetFanSpeed()
         {
             if (IsConnected)
             {
@@ -169,10 +171,26 @@ namespace ValloxSerialNet
             }
         }
 
-        public void ReadVariable()
+        public void ExecuteReadVariable()
         {
             Byte variable = SelectedVariable;
             ReadVariable(variable);
+        }
+
+        public void WriteVariable(Byte variable, Byte value)
+        {
+            if (IsConnected)
+            {
+                Byte[] telegram = Vallox.CreateTelegram(_senderId, Vallox.Adress.Master, variable, value);
+                _serialPort.Write(telegram, 0, telegram.Length);
+            }
+        }
+
+        public void ExecuteWriteVariable()
+        {
+            Byte variable = SelectedVariable;
+            Byte value = SelectedValue;
+            WriteVariable(variable, value);
         }
 
         #region Commands
@@ -183,7 +201,7 @@ namespace ValloxSerialNet
             {
                 if (_connectCommand == null)
                 {
-                    _connectCommand = new Command(Connect, () => { return (ComPort != null && !IsConnected); });
+                    _connectCommand = new Command(ExecuteConnect, () => { return (ComPort != null && !IsConnected); });
                 }
 
                 return _connectCommand;
@@ -196,7 +214,7 @@ namespace ValloxSerialNet
             {
                 if (_disconnectCommand == null)
                 {
-                    _disconnectCommand = new Command(Disconnect, () => IsConnected);
+                    _disconnectCommand = new Command(ExecuteDisconnect, () => IsConnected);
                 }
 
                 return _disconnectCommand;
@@ -209,7 +227,7 @@ namespace ValloxSerialNet
             {
                 if (_setFanSpeedCommand == null)
                 {
-                    _setFanSpeedCommand = new Command(SetFanSpeed, () => IsConnected);
+                    _setFanSpeedCommand = new Command(ExecuteSetFanSpeed, () => IsConnected);
                 }
 
                 return _setFanSpeedCommand;
@@ -222,10 +240,23 @@ namespace ValloxSerialNet
             {
                 if (_readVariableCommand == null)
                 {
-                    _readVariableCommand = new Command(ReadVariable, () => IsConnected);
+                    _readVariableCommand = new Command(ExecuteReadVariable, () => IsConnected);
                 }
 
                 return _readVariableCommand;
+            }
+        }
+
+        public Command WriteVariableCommand
+        {
+            get
+            {
+                if (_writeVariableCommand == null)
+                {
+                    _writeVariableCommand = new Command(ExecuteWriteVariable, () => IsConnected);
+                }
+
+                return _writeVariableCommand;
             }
         }
 
@@ -323,6 +354,23 @@ namespace ValloxSerialNet
                 {
                     _selectedVariable = value;
                     RaisePropertyChanged("SelectedVariable");
+                }
+            }
+        }
+
+        public Byte SelectedValue
+        {
+            get
+            {
+                return _selectedValue;
+            }
+
+            set
+            {
+                if (value != _selectedValue)
+                {
+                    _selectedValue = value;
+                    RaisePropertyChanged("SelectedValue");
                 }
             }
         }
@@ -1461,67 +1509,6 @@ namespace ValloxSerialNet
         {
             string msg = string.Format(format, args);
             Debug.Write(msg);
-        }
-
-        #endregion
-
-        #region ValloxVariable
-        /// <summary>
-        /// Contains one single variable.
-        /// </summary>
-        internal class ValloxVariable : NotificationObject
-        {
-            private byte _value = 0;
-            private int _counter = 1;
-
-            public ValloxVariable(byte id, string description)
-            {
-                Id = id;
-                Description = description;
-            }
-
-            public string Description { get; private set; }
-            public byte Id { get; private set; }
-
-            public byte Value
-            {
-                get
-                {
-                    return _value;
-                }
-
-                set
-                {
-                    if (value != _value)
-                    {
-                        _value = value;
-                        OnValueChanged();
-                        RaisePropertyChanged("Value");
-                    }
-                }
-            }
-
-            private void OnValueChanged()
-            {
-                Counter++;
-            }
-
-            public int Counter
-            {
-                get
-                {
-                    return _counter;
-                }
-
-                set
-                {
-                    if (value != _counter)
-                    {
-                        _counter = value;
-                        RaisePropertyChanged("Counter");
-                    }
-                }
-            }
         }
 
         #endregion
