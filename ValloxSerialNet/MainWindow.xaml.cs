@@ -23,7 +23,7 @@ namespace ValloxSerialNet
             this.Loaded += (sender, args) =>
             {
                 SortListView(VariablesListView, "Id", ListSortDirection.Ascending);
-                SortListView(DevicesListView, "Address", ListSortDirection.Ascending);
+                SortListView(DevicesListView, "Id", ListSortDirection.Ascending);
 
                 //StartPolling();
             }; 
