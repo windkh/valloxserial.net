@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO.Ports;
 using System.Linq;
 using System.Windows.Threading;
@@ -1068,7 +1069,8 @@ namespace ValloxSerialNet
                 Byte computedCheckSum = Vallox.ComputeCheckSum(domain, sender, receiver, command, arg);
                 if (checksum == computedCheckSum)
                 {
-                    Write("{0:X02} {1:X02} {2:X02} {3:X02} {4:X02} {5:X02}    ", domain, sender, receiver, command, arg,
+                    string timestamp = DateTime.UtcNow.ToString("HH:mm:ss.fff", CultureInfo.InvariantCulture);
+                    Write("{0}    {1:X02} {2:X02} {3:X02} {4:X02} {5:X02} {6:X02}    ", timestamp, domain, sender, receiver, command, arg,
                         checksum);
                     Interpret(domain, sender, receiver, command, arg);
                     success = true;

@@ -2,7 +2,7 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:valloxSerialNet="clr-namespace:ValloxSerialNet"
-        Title="Vallox Serial .Net V1.4" Height="820" Width="1024">
+        Title="Vallox Serial .Net V1.5" Height="820" Width="1024">
     
     <Window.Resources>
         <valloxSerialNet:BinConverter x:Key="BinConverter"></valloxSerialNet:BinConverter>
